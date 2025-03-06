@@ -4,8 +4,6 @@ import ky from "ky";
 import queryString from "query-string";
 import constructUrl from "@iamnapo/construct-url";
 
-import { jwt } from "#utils";
-
 const kyInstance = ky.extend({
 	timeout: false,
 	prefixUrl: constructUrl(import.meta.env.VITE_MAIN_SERVER_URL),
@@ -14,44 +12,15 @@ const kyInstance = ky.extend({
 		limit: 2,
 		methods: ["get", "post", "put", "head", "delete", "options", "trace"],
 	},
-	hooks: {
-		beforeRequest: [(request) => {
-			const token = jwt.getToken();
-			const refreshToken = jwt.getRToken();
-			if (token) request.headers.set("x-access-token", token);
-			if (refreshToken) request.headers.set("x-refresh-token", refreshToken);
-		}],
-	},
 	...(import.meta.env.VITE_SENTRY_ENVIRONMENT === "develop" ? { cache: "no-store" } : {}), // This disables caching
 });
 
-const rootApi = kyInstance.extend({
-	hooks: {
-		beforeRetry: [
-			async ({ request: { method }, error }) => {
-				if (error?.response?.status === 401) {
-					const res = await kyInstance.extend({ throwHttpErrors: false, retry: 0 }).get("api/refresh");
-					if (res.status === 401) {
-						jwt.destroyTokens();
-						globalThis.location.href = "/";
-					} else {
-						const { token } = await res.json();
-						jwt.setToken(token);
-					}
-				} else if (method === "POST") {
-					throw error;
-				}
-			},
-		],
-	},
-});
-
 const api = {
-	get: (path, searchParams) => rootApi.get(path, { searchParams: queryString.stringify(searchParams) }).json(),
-	post: (path, json, searchParams) => rootApi.post(path, { json, searchParams }).json(),
-	put: (path, json, searchParams) => rootApi.put(path, { json, searchParams }).json(),
-	patch: (path, json, searchParams) => rootApi.patch(path, { json, searchParams }).json(),
-	delete: (path, json, searchParams) => rootApi.delete(path, { json, searchParams }).json(),
+	get: (path, searchParams) => kyInstance.get(path, { searchParams: queryString.stringify(searchParams) }).json(),
+	post: (path, json, searchParams) => kyInstance.post(path, { json, searchParams }).json(),
+	put: (path, json, searchParams) => kyInstance.put(path, { json, searchParams }).json(),
+	patch: (path, json, searchParams) => kyInstance.patch(path, { json, searchParams }).json(),
+	delete: (path, json, searchParams) => kyInstance.delete(path, { json, searchParams }).json(),
 };
 
 export default api;
